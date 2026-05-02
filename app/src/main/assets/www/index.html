@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Navigator</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root {
+  --bg:#0a0c10; --panel:#111318; --panel2:#161920; --border:#1e2330;
+  --accent:#00e5c3; --accent2:#005c4e; --glow:rgba(0,229,195,0.25);
+  --text:#e8eaf0; --muted:#6b7385; --danger:#ff4f6a; --warn:#f5a623;
+  --r:16px; --rs:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);
+  font-family:-apple-system,'Helvetica Neue',Arial,sans-serif;color:var(--text)}
+
+/* MAP */
+#map{position:fixed;inset:0;z-index:0}
+.leaflet-tile{filter:brightness(0.68) saturate(0.55) hue-rotate(185deg) invert(1)}
+.leaflet-control-zoom,.leaflet-control-attribution{display:none!important}
+
+/* TOP BAR */
+#top-bar{position:fixed;top:0;left:0;right:0;padding:14px 14px 8px;z-index:200;
+  background:linear-gradient(to bottom,rgba(10,12,16,0.97) 65%,transparent)}
+#top-row{display:flex;gap:8px;align-items:center;position:relative}
+#search-box{flex:1;background:rgba(17,19,24,0.96);border:1.5px solid var(--border);
+  border-radius:50px;padding:12px 16px 12px 44px;color:var(--text);font-size:15px;
+  outline:none;-webkit-appearance:none;transition:border-color .2s,box-shadow .2s;
+  backdrop-filter:blur(8px)}
+#search-box:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--glow)}
+#search-box::placeholder{color:var(--muted)}
+#search-ico{position:absolute;left:14px;top:50%;transform:translateY(-50%);
+  font-size:17px;pointer-events:none}
+.icon-btn{width:46px;height:46px;border-radius:50%;background:rgba(17,19,24,0.96);
+  border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;
+  font-size:20px;cursor:pointer;flex-shrink:0;transition:all .2s;backdrop-filter:blur(8px)}
+.icon-btn:active{background:var(--accent2);border-color:var(--accent)}
+
+/* SUGGESTIONS */
+#suggestions{background:rgba(15,17,22,0.98);border:1px solid var(--border);
+  border-radius:var(--rs);margin-top:6px;display:none;overflow:hidden;
+  max-height:260px;overflow-y:auto;backdrop-filter:blur(12px)}
+.sug-item{padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);
+  display:flex;gap:10px;align-items:center;transition:background .15s}
+.sug-item:last-child{border-bottom:none}
+.sug-item:active{background:var(--accent2)}
+.sug-ico{font-size:16px;flex-shrink:0;opacity:.7}
+.sug-name{font-weight:600;font-size:14px}
+.sug-addr{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* MAP OVERLAYS */
+/* ETA bubble — top right */
+#eta-bubble{position:fixed;top:84px;right:14px;z-index:150;
+  background:rgba(10,12,16,0.92);border:1.5px solid var(--accent);
+  border-radius:14px;padding:10px 14px;display:none;backdrop-filter:blur(10px);
+  box-shadow:0 4px 24px rgba(0,229,195,0.2);min-width:110px;text-align:center;
+  animation:popIn .35s cubic-bezier(.34,1.56,.64,1) both}
+@keyframes popIn{from{opacity:0;transform:scale(.8) translateY(-6px)}to{opacity:1;transform:scale(1)}}
+#eta-time{font-size:22px;font-weight:800;color:var(--accent);letter-spacing:-1px;line-height:1}
+#eta-clock{font-size:12px;color:var(--muted);margin-top:3px}
+#eta-dist{font-size:11px;color:var(--text);margin-top:2px;font-weight:600}
+
+/* Next turn banner — shows current step */
+#next-turn{position:fixed;top:84px;left:14px;right:135px;z-index:150;
+  background:rgba(10,12,16,0.92);border:1px solid var(--border);
+  border-radius:14px;padding:10px 13px;display:none;backdrop-filter:blur(10px);
+  box-shadow:0 4px 20px rgba(0,0,0,0.5)}
+#turn-icon{font-size:22px;margin-bottom:2px}
+#turn-road{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+#turn-dist{font-size:11px;color:var(--accent);margin-top:2px;font-weight:600}
+
+/* Map hint */
+#map-hint{position:fixed;bottom:160px;left:50%;transform:translateX(-50%);
+  background:rgba(10,12,16,0.82);border:1px solid var(--border);
+  backdrop-filter:blur(8px);padding:9px 18px;border-radius:30px;
+  font-size:12px;color:var(--muted);z-index:50;white-space:nowrap;
+  pointer-events:none;transition:opacity .6s}
+#map-hint.gone{opacity:0}
+
+/* Zoom controls (custom) */
+#zoom-btns{position:fixed;right:14px;bottom:170px;z-index:150;display:flex;flex-direction:column;gap:6px}
+.zoom-btn{width:40px;height:40px;border-radius:10px;background:rgba(17,19,24,0.94);
+  border:1px solid var(--border);color:var(--text);font-size:20px;font-weight:300;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(8px);transition:all .15s;line-height:1}
+.zoom-btn:active{background:var(--accent2);color:var(--accent);border-color:var(--accent)}
+
+/* BOTTOM SHEET — 3 states */
+#sheet{position:fixed;bottom:0;left:0;right:0;z-index:200;background:var(--panel);
+  border-radius:22px 22px 0 0;border-top:1px solid var(--border);
+  display:flex;flex-direction:column;
+  max-height:86vh;
+  transform:translateY(calc(100% - 82px));
+  transition:transform .42s cubic-bezier(.32,.72,0,1)}
+#sheet.peek{transform:translateY(calc(100% - 168px))}
+#sheet.open{transform:translateY(0)}
+
+#sheet-handle-wrap{padding:8px 0 4px;cursor:pointer;flex-shrink:0;text-align:center}
+#sheet-handle{width:40px;height:4px;background:var(--border);border-radius:2px;display:inline-block}
+
+/* Sheet header */
+#sheet-head{padding:0 16px 8px;flex-shrink:0;cursor:pointer}
+#dest-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:3px}
+#dest-name{font-size:15px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Stats pills */
+#stats-row{display:flex;gap:8px;padding:0 16px 10px;flex-shrink:0}
+.pill{flex:1;background:var(--panel2);border:1.5px solid var(--border);
+  border-radius:var(--rs);padding:10px 4px;text-align:center;transition:all .3s}
+.pill.on{border-color:var(--accent);background:rgba(0,229,195,0.06)}
+.pill-val{font-size:15px;font-weight:800;color:var(--accent);letter-spacing:-.5px}
+.pill-lbl{font-size:9px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+
+/* Directions toggle row */
+#dir-toggle-row{display:none;flex-shrink:0;padding:0 16px 8px;gap:8px;align-items:center}
+#dir-toggle-btn{flex:1;background:var(--panel2);border:1px solid var(--border);
+  border-radius:var(--rs);padding:9px 14px;color:var(--text);font-size:13px;
+  font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+  transition:all .2s}
+#dir-toggle-btn:active{background:var(--accent2);border-color:var(--accent)}
+#dir-chevron{font-size:12px;transition:transform .3s;color:var(--muted)}
+#dir-chevron.flipped{transform:rotate(180deg)}
+#clear-btn{background:rgba(255,79,106,0.08);border:1px solid rgba(255,79,106,0.25);
+  border-radius:var(--rs);padding:9px 14px;color:var(--danger);font-size:13px;
+  font-weight:600;cursor:pointer;white-space:nowrap;transition:all .2s}
+#clear-btn:active{background:rgba(255,79,106,0.2)}
+
+/* Collapsible steps */
+#steps-wrap{overflow:hidden;transition:max-height .4s cubic-bezier(.32,.72,0,1);max-height:0}
+#steps-wrap.visible{max-height:60vh}
+#steps-scroll{overflow-y:auto;padding:4px 16px 20px;-webkit-overflow-scrolling:touch}
+#steps-scroll::-webkit-scrollbar{display:none}
+.step-item{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;
+  background:#0e1016;border:1px solid var(--border);border-radius:var(--rs);
+  margin-bottom:7px;animation:fadeUp .3s ease both}
+.step-item.active-step{border-color:var(--accent);background:rgba(0,229,195,0.05)}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.s-ico{width:30px;height:30px;border-radius:50%;background:var(--accent2);
+  display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.s-txt{font-size:13px;line-height:1.45}
+.s-dist{font-size:11px;color:var(--accent);margin-top:3px;font-weight:600}
+
+/* Empty state */
+#empty-state{display:flex;flex-direction:column;align-items:center;
+  justify-content:center;padding:24px 20px;gap:10px;color:var(--muted);text-align:center}
+#empty-state .ei{font-size:36px;opacity:.35}
+#empty-state p{font-size:13px;line-height:1.6}
+
+/* LOADING */
+#loading{position:fixed;inset:0;background:var(--bg);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:16px}
+#loading.out{animation:fadeOut .5s ease both}
+@keyframes fadeOut{to{opacity:0;pointer-events:none}}
+#loading strong{font-size:22px;color:var(--accent);letter-spacing:3px}
+#loading p{font-size:13px;color:var(--muted)}
+.spinner{width:38px;height:38px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TOAST */
+#toast{position:fixed;top:90px;left:50%;transform:translateX(-50%) translateY(-16px);
+  background:rgba(30,35,50,.97);color:var(--text);border:1px solid var(--border);
+  padding:10px 20px;border-radius:24px;font-size:13px;opacity:0;
+  transition:all .3s;z-index:9999;white-space:nowrap;backdrop-filter:blur(8px)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.err{border-color:var(--danger);color:var(--danger)}
+
+/* MARKERS */
+.pulse-wrap{position:relative;width:24px;height:24px}
+.pulse-dot{width:14px;height:14px;border-radius:50%;background:var(--accent);
+  border:2.5px solid var(--bg);position:absolute;top:5px;left:5px;z-index:2}
+.pulse-ring{width:24px;height:24px;border-radius:50%;
+  border:2px solid var(--accent);opacity:.5;position:absolute;top:0;left:0;
+  animation:ring 2s ease-out infinite}
+@keyframes ring{0%{transform:scale(.5);opacity:.8}100%{transform:scale(1.5);opacity:0}}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <strong>◈ NAVIGATOR</strong>
+  <div class="spinner"></div>
+  <p>Locating you…</p>
+</div>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- TOP BAR -->
+<div id="top-bar">
+  <div id="top-row">
+    <span id="search-ico">🔍</span>
+    <input id="search-box" type="text" placeholder="Search destination…" autocomplete="off"/>
+    <div class="icon-btn" id="locate-btn" title="My location">◎</div>
+  </div>
+  <div id="suggestions"></div>
+</div>
+
+<!-- ETA bubble (top right) -->
+<div id="eta-bubble">
+  <div id="eta-time">—</div>
+  <div id="eta-clock"></div>
+  <div id="eta-dist"></div>
+</div>
+
+<!-- Next-turn banner (top left) -->
+<div id="next-turn">
+  <div id="turn-icon">→</div>
+  <div id="turn-road">—</div>
+  <div id="turn-dist"></div>
+</div>
+
+<!-- Map hint -->
+<div id="map-hint">👆 Tap map to drop a pin</div>
+
+<!-- Custom zoom buttons -->
+<div id="zoom-btns">
+  <div class="zoom-btn" id="zoom-in">+</div>
+  <div class="zoom-btn" id="zoom-out">−</div>
+</div>
+
+<!-- BOTTOM SHEET -->
+<div id="sheet">
+  <div id="sheet-handle-wrap">
+    <span id="sheet-handle"></span>
+  </div>
+
+  <div id="sheet-head">
+    <div id="dest-label">Destination</div>
+    <div id="dest-name">Tap map or search to begin</div>
+  </div>
+
+  <div id="stats-row">
+    <div class="pill" id="p-dist"><div class="pill-val" id="v-dist">—</div><div class="pill-lbl">Distance</div></div>
+    <div class="pill" id="p-time"><div class="pill-val" id="v-time">—</div><div class="pill-lbl">Drive time</div></div>
+    <div class="pill" id="p-eta" ><div class="pill-val" id="v-eta" >—</div><div class="pill-lbl">Arrive at</div></div>
+  </div>
+
+  <div id="dir-toggle-row">
+    <div id="dir-toggle-btn">
+      <span id="dir-label">Turn-by-turn directions</span>
+      <span id="dir-chevron">▼</span>
+    </div>
+    <div id="clear-btn">✕ Clear</div>
+  </div>
+
+  <div id="steps-wrap">
+    <div id="steps-scroll">
+      <div id="empty-state">
+        <div class="ei">🧭</div>
+        <p>Directions will appear here once you set a destination</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── State ──
+let uLat=null,uLng=null,dLat=null,dLng=null;
+let map,uMarker,dMarker,routeLayer,routeOutline;
+let searchTimer=null,stepsOpen=false,dirShown=false;
+let sheetState='closed'; // closed | peek | open
+let allSteps=[];
+
+// ── Sheet states ──
+const sheet=document.getElementById('sheet');
+function setSheet(s){
+  sheetState=s;
+  sheet.classList.remove('peek','open');
+  if(s==='peek') sheet.classList.add('peek');
+  if(s==='open') sheet.classList.add('open');
+}
+document.getElementById('sheet-handle-wrap').addEventListener('click',()=>{
+  if(sheetState==='closed'||sheetState==='peek') setSheet('open');
+  else setSheet('peek');
+});
+document.getElementById('sheet-head').addEventListener('click',()=>{
+  if(sheetState==='closed') setSheet('peek');
+  else if(sheetState==='peek') setSheet('open');
+  else setSheet('peek');
+});
+
+// ── Directions collapse toggle ──
+const dirWrap=document.getElementById('steps-wrap');
+const dirChevron=document.getElementById('dir-chevron');
+const dirLabel=document.getElementById('dir-label');
+document.getElementById('dir-toggle-btn').addEventListener('click',e=>{
+  e.stopPropagation();
+  stepsOpen=!stepsOpen;
+  dirWrap.classList.toggle('visible',stepsOpen);
+  dirChevron.classList.toggle('flipped',stepsOpen);
+  dirLabel.textContent=stepsOpen?'Hide directions':'Turn-by-turn directions';
+  if(stepsOpen) setSheet('open');
+});
+
+// ── Map init ──
+function initMap(lat,lng){
+  map=L.map('map',{zoomControl:false,attributionControl:false}).setView([lat,lng],14);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+
+  const pIcon=L.divIcon({className:'',
+    html:`<div class="pulse-wrap"><div class="pulse-ring"></div><div class="pulse-dot"></div></div>`,
+    iconSize:[24,24],iconAnchor:[12,12]});
+  uMarker=L.marker([lat,lng],{icon:pIcon,zIndexOffset:1000}).addTo(map)
+    .bindTooltip('You are here',{direction:'top',offset:[0,-8]});
+
+  map.on('click',e=>{
+    document.getElementById('map-hint').classList.add('gone');
+    setDestination(e.latlng.lat,e.latlng.lng,null);
+  });
+}
+
+// ── Geolocation ──
+function locateUser(){
+  return new Promise((res,rej)=>{
+    if(!navigator.geolocation){rej('No geolocation');return}
+    navigator.geolocation.getCurrentPosition(
+      p=>res({lat:p.coords.latitude,lng:p.coords.longitude}),
+      e=>rej(e.message),
+      {enableHighAccuracy:true,timeout:15000,maximumAge:10000});
+  });
+}
+
+// ── Set destination ──
+async function setDestination(lat,lng,name){
+  dLat=lat;dLng=lng;
+  if(!name){
+    try{
+      const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+        {headers:{'Accept-Language':'en'}});
+      const d=await r.json();
+      name=d.display_name?d.display_name.split(',').slice(0,2).join(', '):`${lat.toFixed(4)},${lng.toFixed(4)}`;
+    }catch{name=`${lat.toFixed(4)},${lng.toFixed(4)}`}
+  }
+  document.getElementById('dest-name').textContent=name;
+  document.getElementById('dest-label').textContent='📍 Destination';
+
+  if(dMarker)map.removeLayer(dMarker);
+  const di=L.divIcon({className:'',
+    html:`<div style="position:relative;width:28px;height:36px">
+      <div style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:#ff4f6a;
+        border:3px solid #fff;transform:rotate(-45deg);
+        box-shadow:0 4px 16px rgba(255,79,106,.7)"></div>
+      <div style="position:absolute;top:4px;left:4px;width:12px;height:12px;
+        border-radius:50%;background:rgba(255,255,255,.9)"></div></div>`,
+    iconSize:[28,36],iconAnchor:[14,36]});
+  dMarker=L.marker([lat,lng],{icon:di}).addTo(map);
+
+  setSheet('peek');
+  fetchRoute();
+}
+
+// ── Route ──
+async function fetchRoute(){
+  if(!uLat||!dLat)return;
+  ['v-dist','v-time','v-eta'].forEach(id=>document.getElementById(id).textContent='…');
+
+  try{
+    const url=`https://router.project-osrm.org/route/v1/driving/${uLng},${uLat};${dLng},${dLat}?overview=full&geometries=geojson&steps=true`;
+    const r=await fetch(url);
+    const d=await r.json();
+    if(d.code!=='Ok'||!d.routes.length){showToast('No route found',true);return}
+
+    const route=d.routes[0];
+    const km=(route.distance/1000).toFixed(1);
+    const mins=Math.round(route.duration/60);
+    allSteps=route.legs[0].steps;
+
+    // Stats pills
+    document.getElementById('v-dist').textContent=km+' km';
+    document.getElementById('v-time').textContent=fmtDur(mins);
+    const eta=etaTime(mins);
+    document.getElementById('v-eta').textContent=eta;
+    ['p-dist','p-time','p-eta'].forEach(id=>document.getElementById(id).classList.add('on'));
+
+    // ETA bubble on map
+    document.getElementById('eta-time').textContent=fmtDur(mins);
+    document.getElementById('eta-clock').textContent='ETA '+eta;
+    document.getElementById('eta-dist').textContent=km+' km away';
+    document.getElementById('eta-bubble').style.display='block';
+
+    // Next turn
+    updateNextTurn(0);
+    document.getElementById('next-turn').style.display='block';
+
+    // Draw route (outline + line for depth)
+    if(routeOutline)map.removeLayer(routeOutline);
+    if(routeLayer)map.removeLayer(routeLayer);
+    routeOutline=L.geoJSON(route.geometry,{style:{color:'#003d35',weight:9,opacity:.8,lineCap:'round',lineJoin:'round'}}).addTo(map);
+    routeLayer  =L.geoJSON(route.geometry,{style:{color:'#00e5c3',weight:5,opacity:1,  lineCap:'round',lineJoin:'round'}}).addTo(map);
+
+    map.fitBounds(L.latLngBounds([[uLat,uLng],[dLat,dLng]]),{padding:[90,90]});
+
+    // Show directions toggle
+    document.getElementById('dir-toggle-row').style.display='flex';
+    dirShown=true;
+    renderSteps(allSteps);
+    setSheet('peek');
+
+  }catch(e){showToast('Route error. Check connection.',true)}
+}
+
+function fmtDur(m){
+  if(m<60)return m+' min';
+  const h=Math.floor(m/60),mm=m%60;
+  return h+'h'+(mm>0?' '+mm+'m':'');
+}
+function etaTime(mins){
+  const now=new Date(Date.now()+mins*60000);
+  return now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+}
+
+function stepIcon(type,mod){
+  const k=(type||'')+(mod?'-'+mod:'');
+  if(k.includes('right'))     return '↱';
+  if(k.includes('left'))      return '↰';
+  if(k.includes('roundabout'))return '↻';
+  if(k.includes('arrive'))    return '🏁';
+  if(k.includes('depart'))    return '🚗';
+  if(k.includes('merge'))     return '⤵';
+  if(k.includes('fork'))      return '⑂';
+  if(k.includes('uturn'))     return '↩';
+  return '↑';
+}
+function stepTxt(type,mod,name){
+  name=name||'road';
+  if(type==='depart')    return `Start on <b>${name}</b>`;
+  if(type==='arrive')    return `Arrive at destination`;
+  if(type==='turn')      return `Turn ${mod} onto <b>${name}</b>`;
+  if(type==='roundabout')return `Take roundabout → <b>${name}</b>`;
+  if(type==='merge')     return `Merge onto <b>${name}</b>`;
+  if(type==='fork')      return `Keep ${mod} → <b>${name}</b>`;
+  if(type==='continue')  return `Continue on <b>${name}</b>`;
+  if(type==='new name')  return `Continue on <b>${name}</b>`;
+  return `${type} ${mod||''} → <b>${name}</b>`;
+}
+
+function updateNextTurn(idx){
+  const s=allSteps[idx];if(!s)return;
+  const type=s.maneuver?.type||'';
+  const mod =s.maneuver?.modifier||'';
+  const name=s.name||'road';
+  document.getElementById('turn-icon').textContent=stepIcon(type,mod);
+  document.getElementById('turn-road').textContent=name||type;
+  const dist=s.distance>=1000?(s.distance/1000).toFixed(1)+' km':Math.round(s.distance)+' m';
+  document.getElementById('turn-dist').textContent=dist;
+}
+
+function renderSteps(steps){
+  const area=document.getElementById('steps-scroll');
+  area.innerHTML='';
+  steps.forEach((s,i)=>{
+    const type=s.maneuver?.type||'',mod=s.maneuver?.modifier||'',name=s.name||'';
+    const dist=s.distance>=1000?(s.distance/1000).toFixed(1)+' km':Math.round(s.distance)+' m';
+    const el=document.createElement('div');
+    el.className='step-item'+(i===0?' active-step':'');
+    el.style.animationDelay=(i*30)+'ms';
+    el.innerHTML=`<div class="s-ico">${stepIcon(type,mod)}</div>
+      <div><div class="s-txt">${stepTxt(type,mod,name)}</div>
+      ${s.distance>0?`<div class="s-dist">${dist}</div>`:''}</div>`;
+    el.addEventListener('click',()=>updateNextTurn(i));
+    area.appendChild(el);
+  });
+}
+
+// ── Search ──
+const sbox=document.getElementById('search-box');
+const sugg=document.getElementById('suggestions');
+sbox.addEventListener('input',()=>{
+  clearTimeout(searchTimer);
+  const q=sbox.value.trim();
+  if(q.length<3){sugg.style.display='none';return}
+  searchTimer=setTimeout(()=>doSearch(q),380);
+});
+sbox.addEventListener('focus',()=>{if(sbox.value.trim().length>=3)sugg.style.display='block'});
+document.addEventListener('click',e=>{if(!e.target.closest('#top-bar'))sugg.style.display='none'});
+
+async function doSearch(q){
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5`,
+      {headers:{'Accept-Language':'en'}});
+    const items=await r.json();
+    sugg.innerHTML='';
+    if(!items.length){sugg.style.display='none';return}
+    items.forEach(item=>{
+      const el=document.createElement('div');
+      el.className='sug-item';
+      const parts=item.display_name.split(',');
+      el.innerHTML=`<div class="sug-ico">📍</div>
+        <div><div class="sug-name">${parts[0]}</div>
+        <div class="sug-addr">${parts.slice(1,3).join(',').trim()}</div></div>`;
+      el.addEventListener('click',()=>{
+        sugg.style.display='none';sbox.value=parts[0];sbox.blur();
+        document.getElementById('map-hint').classList.add('gone');
+        setDestination(parseFloat(item.lat),parseFloat(item.lon),parts.slice(0,2).join(', '));
+      });
+      sugg.appendChild(el);
+    });
+    sugg.style.display='block';
+  }catch{sugg.style.display='none'}
+}
+
+// ── Clear ──
+document.getElementById('clear-btn').addEventListener('click',()=>{
+  dLat=dLng=null;allSteps=[];
+  if(dMarker){map.removeLayer(dMarker);dMarker=null}
+  if(routeLayer){map.removeLayer(routeLayer);routeLayer=null}
+  if(routeOutline){map.removeLayer(routeOutline);routeOutline=null}
+  ['p-dist','p-time','p-eta'].forEach(id=>document.getElementById(id).classList.remove('on'));
+  ['v-dist','v-time','v-eta'].forEach(id=>document.getElementById(id).textContent='—');
+  document.getElementById('dest-name').textContent='Tap map or search to begin';
+  document.getElementById('dest-label').textContent='Destination';
+  document.getElementById('eta-bubble').style.display='none';
+  document.getElementById('next-turn').style.display='none';
+  document.getElementById('dir-toggle-row').style.display='none';
+  dirShown=false;stepsOpen=false;
+  document.getElementById('dir-chevron').classList.remove('flipped');
+  document.getElementById('dir-label').textContent='Turn-by-turn directions';
+  dirWrap.classList.remove('visible');
+  document.getElementById('steps-scroll').innerHTML=
+    `<div id="empty-state"><div class="ei">🧭</div><p>Directions will appear here once you set a destination</p></div>`;
+  sbox.value='';
+  setSheet('closed');
+  if(uLat)map.setView([uLat,uLng],14);
+});
+
+// ── Locate ──
+document.getElementById('locate-btn').addEventListener('click',async()=>{
+  const btn=document.getElementById('locate-btn');
+  btn.textContent='…';
+  try{
+    const p=await locateUser();
+    uLat=p.lat;uLng=p.lng;
+    if(uMarker)uMarker.setLatLng([uLat,uLng]);
+    map.setView([uLat,uLng],15);
+    if(dLat)fetchRoute();
+    showToast('Location updated ✓');
+  }catch{showToast('Could not get location',true)}
+  btn.textContent='◎';
+});
+
+// ── Zoom buttons ──
+document.getElementById('zoom-in').addEventListener('click',()=>map.zoomIn());
+document.getElementById('zoom-out').addEventListener('click',()=>map.zoomOut());
+
+// ── Toast ──
+function showToast(msg,err=false){
+  const t=document.getElementById('toast');
+  t.textContent=msg;
+  t.className='show'+(err?' err':'');
+  clearTimeout(t._t);
+  t._t=setTimeout(()=>t.className='',3000);
+}
+
+// ── Boot ──
+(async()=>{
+  const L2=document.getElementById('loading');
+  try{
+    const p=await locateUser();
+    uLat=p.lat;uLng=p.lng;
+    initMap(uLat,uLng);
+  }catch{
+    uLat=25;uLng=45;
+    initMap(uLat,uLng);
+    showToast('Location unavailable — enable GPS',true);
+  }
+  L2.classList.add('out');
+  setTimeout(()=>L2.remove(),600);
+  setTimeout(()=>document.getElementById('map-hint').classList.add('gone'),5000);
+})();
+</script>
+</body>
+</html>
